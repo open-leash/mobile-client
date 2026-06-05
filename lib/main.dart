@@ -31,7 +31,10 @@ const _contracts = <String, String>{
 String _defaultCloudApiUrl() {
   const configured = String.fromEnvironment('OPENLEASH_CLOUD_API_URL');
   if (configured.isNotEmpty) return configured;
-  if (kDebugMode) return 'http://127.0.0.1:9318';
+  if (kDebugMode) {
+    if (Platform.isAndroid) return 'http://10.0.2.2:9318';
+    return 'http://localhost:9318';
+  }
   return _productionCloudApiUrl;
 }
 
@@ -116,7 +119,16 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       _apiController.text.trim().replaceAll(RegExp(r'/$'), '');
   List<String> get _apiCandidates {
     if (_customApi) return [_apiUrl];
-    return <String>{_defaultCloudApiUrl(), _productionCloudApiUrl}.toList();
+    final localDevCandidates = kDebugMode
+        ? Platform.isAndroid
+            ? const ['http://10.0.2.2:9318', 'http://localhost:9318']
+            : const ['http://localhost:9318', 'http://127.0.0.1:9318']
+        : const <String>[];
+    return <String>{
+      _defaultCloudApiUrl(),
+      ...localDevCandidates,
+      _productionCloudApiUrl,
+    }.toList();
   }
 
   bool get _signedIn => _token != null && _token!.isNotEmpty;
@@ -948,7 +960,9 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
     final base = configured.isNotEmpty
         ? configured
         : kDebugMode
-        ? 'http://localhost:9302'
+        ? Platform.isAndroid
+              ? 'http://10.0.2.2:9302'
+              : 'http://localhost:9302'
         : _productionDashboardUrl;
     return slug.isEmpty
         ? base
