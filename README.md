@@ -9,10 +9,12 @@ The iOS/Android companion app for approving OpenLeash decisions away from the de
 ## What It Does
 
 - Discovers an organization's managed API
-- Signs users in with OAuth / SSO
+- Signs existing users in with OAuth / SSO
 - Registers the phone for approval workflows
 - Shows pending decisions
 - Sends allow/deny responses back to the API
+
+Mobile is sign-in only. Create the OpenLeash account from desktop or the web, then use the phone as the approval companion.
 
 ## Run
 

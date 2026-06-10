@@ -14,7 +14,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'openleash_public_config.dart';
 
 const _productionCloudApiUrl = openLeashPublicCloudApiUrl;
-const _productionDashboardUrl = openLeashPublicCloudDashboardUrl;
 const _redirectUri = openLeashAuthCallbackUri;
 const _storageKey = 'openleash.mobile.session.v1';
 const _functionHeader = 'x-openleash-api-function';
@@ -121,8 +120,8 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
     if (_customApi) return [_apiUrl];
     final localDevCandidates = kDebugMode
         ? Platform.isAndroid
-            ? const ['http://10.0.2.2:9318', 'http://localhost:9318']
-            : const ['http://localhost:9318', 'http://127.0.0.1:9318']
+              ? const ['http://10.0.2.2:9318', 'http://localhost:9318']
+              : const ['http://localhost:9318', 'http://127.0.0.1:9318']
         : const <String>[];
     return <String>{
       _defaultCloudApiUrl(),
@@ -132,8 +131,6 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
   }
 
   bool get _signedIn => _token != null && _token!.isNotEmpty;
-  bool get _needsDashboardHandoff =>
-      _signedIn && _audience == 'organization' && !_customApi;
   List<dynamic> get _providers =>
       (_bootstrap?['providers'] as List?) ?? const [];
   List<dynamic> get _pendingApprovals =>
@@ -163,9 +160,6 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
     if (raw != null) {
       final saved = jsonDecode(raw) as Map<String, dynamic>;
       _customApi = saved['customApi'] == true;
-      _audience = saved['audience'] == 'organization'
-          ? 'organization'
-          : 'individual';
       final savedApiUrl = saved['apiUrl'] as String?;
       _apiController.text = _customApi
           ? savedApiUrl ?? _defaultCloudApiUrl()
@@ -191,7 +185,6 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       value: jsonEncode({
         'apiUrl': _apiUrl,
         'customApi': _customApi,
-        'audience': _audience,
         'token': _token,
       }),
     );
@@ -352,6 +345,7 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
           'authorizationCode': code,
           'providerType': _pendingProvider ?? 'google',
           'organizationId': _pendingOrganizationId,
+          'provisionUser': false,
         },
       );
       if (response.statusCode >= 400) {
@@ -609,12 +603,7 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
                   SizedBox(height: _signedIn ? 20 : 18),
                   if (_error != null) _ErrorBanner(message: _error!),
                   if (_busy) const LinearProgressIndicator(minHeight: 3),
-                  if (!_signedIn)
-                    ..._wizard()
-                  else if (_needsDashboardHandoff)
-                    ..._dashboardHandoff()
-                  else
-                    ..._approvalHome(),
+                  if (!_signedIn) ..._wizard() else ..._approvalHome(),
                 ],
               ),
             ),
@@ -634,7 +623,7 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'Set up OpenLeash',
+            'Sign in to OpenLeash',
             style: TextStyle(
               fontSize: 32,
               height: 1.02,
@@ -642,85 +631,16 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            _audience == 'organization'
-                ? 'Use mobile as a team sign-up or approval surface.'
-                : 'Use OpenLeash Cloud for your own agents.',
-            style: const TextStyle(
+          const Text(
+            'Use an existing OpenLeash Cloud or company account to approve agent actions from your phone.',
+            style: TextStyle(
               color: Color(0xff8a909e),
               fontSize: 16,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 18),
-          Row(
-            children: [
-              Expanded(
-                child: _ModeButton(
-                  selected: _audience == 'individual',
-                  title: 'Individual',
-                  subtitle: 'OpenLeash Cloud',
-                  onTap: () => setState(() {
-                    _audience = 'individual';
-                    _customApi = false;
-                    _apiController.text = _defaultCloudApiUrl();
-                  }),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _ModeButton(
-                  selected: _audience == 'organization',
-                  title: 'Organization',
-                  subtitle: _customApi ? 'Private Cloud' : 'OpenLeash Cloud',
-                  onTap: () => setState(() => _audience = 'organization'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 22),
-          if (_audience == 'organization') ...[
-            Row(
-              children: [
-                Expanded(
-                  child: _ModeButton(
-                    selected: !_customApi,
-                    title: 'OpenLeash Cloud',
-                    subtitle: 'Continue in dashboard',
-                    onTap: () => setState(() {
-                      _customApi = false;
-                      _apiController.text = _defaultCloudApiUrl();
-                    }),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _ModeButton(
-                    selected: _customApi,
-                    title: 'Private Cloud',
-                    subtitle: 'Use company URL',
-                    onTap: () => setState(() => _customApi = true),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-          ],
-          if (!_customApi && _audience == 'organization') ...[
-            _ProviderButton(
-              label: 'Google Workspace',
-              mark: 'G',
-              busy: _busy && _pendingProvider == 'google',
-              onPressed: () => _startSignIn('google'),
-            ),
-            const SizedBox(height: 10),
-            _ProviderButton(
-              label: 'Microsoft 365',
-              mark: 'M',
-              busy: _busy && _pendingProvider == 'azure_ad',
-              onPressed: () => _startSignIn('azure_ad'),
-            ),
-          ] else if (!_customApi)
+          if (!_customApi) ...[
             _GoogleButton(
               busy: _busy,
               onPressed: () {
@@ -728,8 +648,26 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
                 _startSignIn('google');
               },
             ),
+            const SizedBox(height: 10),
+            _ProviderButton(
+              label: 'Sign in with Microsoft',
+              mark: 'M',
+              busy: _busy && _pendingProvider == 'azure_ad',
+              onPressed: () {
+                setState(() => _apiController.text = _defaultCloudApiUrl());
+                _startSignIn('azure_ad');
+              },
+            ),
+            const SizedBox(height: 10),
+            _SecondaryButton(
+              label: 'Use company API',
+              onPressed: () => setState(() {
+                _customApi = true;
+                _audience = 'organization';
+              }),
+            ),
+          ],
           if (_customApi) ...[
-            const SizedBox(height: 12),
             _Input(
               controller: _apiController,
               label: 'OpenLeash URL',
@@ -740,6 +678,15 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
               label: 'Sign in with company',
               icon: Icons.arrow_forward,
               onPressed: () => _startSignIn(),
+            ),
+            const SizedBox(height: 10),
+            _SecondaryButton(
+              label: 'Use OpenLeash Cloud',
+              onPressed: () => setState(() {
+                _customApi = false;
+                _audience = 'individual';
+                _apiController.text = _defaultCloudApiUrl();
+              }),
             ),
           ],
         ],
@@ -906,68 +853,6 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       ),
     ];
   }
-
-  List<Widget> _dashboardHandoff() {
-    final orgSlug =
-        (_state?['organization'] as Map?)?['slug']?.toString() ?? '';
-    final dashboardUrl = _dashboardUrlForOrg(orgSlug);
-    return [
-      _Panel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Icon(
-              Icons.business_rounded,
-              size: 48,
-              color: Color(0xff0e755e),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'You’re setting up a team',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Continue onboarding in the dashboard to name your organization, connect identity, invite employees, and configure policies.',
-              style: TextStyle(
-                color: Color(0xff8a909e),
-                fontWeight: FontWeight.w700,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 18),
-            _PrimaryButton(
-              label: 'Continue in dashboard',
-              icon: Icons.open_in_new_rounded,
-              onPressed: () => launchUrl(
-                Uri.parse(dashboardUrl),
-                mode: LaunchMode.externalApplication,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _SecondaryButton(label: 'Sign out', onPressed: _signOut),
-          ],
-        ),
-      ),
-      const SizedBox(height: 18),
-    ];
-  }
-
-  String _dashboardUrlForOrg(String slug) {
-    final configured = const String.fromEnvironment(
-      'OPENLEASH_DASHBOARD_URL',
-    );
-    final base = configured.isNotEmpty
-        ? configured
-        : kDebugMode
-        ? Platform.isAndroid
-              ? 'http://10.0.2.2:9302'
-              : 'http://localhost:9302'
-        : _productionDashboardUrl;
-    return slug.isEmpty
-        ? base
-        : '${base.replaceAll(RegExp(r'/$'), '')}/${Uri.encodeComponent(slug)}';
-  }
 }
 
 class ApprovalNotifications {
@@ -1091,10 +976,7 @@ class ApprovalNotifications {
       id: approval.id.hashCode & 0x7fffffff,
       title: 'Allow ${approval.agent}?',
       body: approval.notificationBody,
-      notificationDetails: NotificationDetails(
-        android: android,
-        iOS: darwin,
-      ),
+      notificationDetails: NotificationDetails(android: android, iOS: darwin),
       payload: approval.id,
     );
   }
@@ -1146,8 +1028,12 @@ String? _cleanResolutionGuidance(String? value) {
 }
 
 bool _supportsAgentGuidance(String? agentKind) {
-  return const {'claude-code', 'codex', 'openclaw', 'nanoclaw'}
-      .contains(agentKind);
+  return const {
+    'claude-code',
+    'codex',
+    'openclaw',
+    'nanoclaw',
+  }.contains(agentKind);
 }
 
 class ApprovalContextLine {
@@ -1232,62 +1118,6 @@ class _Panel extends StatelessWidget {
         ],
       ),
       child: child,
-    );
-  }
-}
-
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({
-    required this.selected,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final bool selected;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: onTap,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 86),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xffeef5ff) : const Color(0xfff7f8fa),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: selected ? const Color(0xff9fb7ff) : const Color(0xffdde2eb),
-            width: selected ? 1.5 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              subtitle,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Color(0xff8a909e),
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -1677,234 +1507,234 @@ class _AgentCardState extends State<_AgentCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: tint.surface,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: tint.border),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Image.asset(
-                    _agentIconAsset(agent),
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                        height: 1.05,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            kind.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xff006bd6),
-                              fontSize: 11,
-                              letterSpacing: 1.9,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 7),
-                          child: Text('•', style: TextStyle(fontSize: 14)),
-                        ),
-                        Text(
-                          'Node : $nodeCount',
-                          style: const TextStyle(
-                            color: Color(0xff5f6674),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _AgentStatusPill(status: status),
-            ],
-          ),
-          const SizedBox(height: 22),
-          const Divider(height: 1, color: Color(0xffe4e7ee)),
-          const SizedBox(height: 18),
-          const Text(
-            'TARGET GOAL & PURPOSE',
-            style: TextStyle(
-              color: Color(0xff717886),
-              fontSize: 11,
-              letterSpacing: 1.8,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            target,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xff151820),
-              fontSize: 23,
-              height: 1.18,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xffe0e4ec)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x12000000),
-                  blurRadius: 18,
-                  offset: Offset(0, 8),
-                ),
-              ],
-            ),
-            child: Column(
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'ACTIVE REMOTE WORKTIME STREAM',
-                  style: TextStyle(
-                    color: Color(0xff747b88),
-                    fontSize: 10,
-                    letterSpacing: 1.6,
-                    fontWeight: FontWeight.w900,
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: tint.surface,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: tint.border),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: Image.asset(
+                      _agentIconAsset(agent),
+                      fit: BoxFit.contain,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      margin: const EdgeInsets.only(top: 7),
-                      decoration: BoxDecoration(
-                        color: tint.dot,
-                        borderRadius: BorderRadius.circular(99),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '“$stream”',
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: tint.text,
-                          fontSize: 16,
-                          height: 1.25,
+                        style: const TextStyle(
+                          fontSize: 17,
                           fontWeight: FontWeight.w900,
+                          height: 1.05,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _TinyMeta(label: 'ELAPSED', value: elapsed),
-                    ),
-                    _TinyMeta(label: 'SYNC ID', value: syncId),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Divider(height: 1, color: Color(0xffe4e7ee)),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: Text.rich(
-                  TextSpan(
-                    text: 'Completed calls: ',
-                    style: const TextStyle(
-                      color: Color(0xff747b88),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                    children: [
-                      TextSpan(
-                        text: '$completedCalls',
-                        style: const TextStyle(
-                          color: Color(0xff151820),
-                          fontWeight: FontWeight.w900,
-                        ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              kind.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xff006bd6),
+                                fontSize: 11,
+                                letterSpacing: 1.9,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 7),
+                            child: Text('•', style: TextStyle(fontSize: 14)),
+                          ),
+                          Text(
+                            'Node : $nodeCount',
+                            style: const TextStyle(
+                              color: Color(0xff5f6674),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
+                _AgentStatusPill(status: status),
+              ],
+            ),
+            const SizedBox(height: 22),
+            const Divider(height: 1, color: Color(0xffe4e7ee)),
+            const SizedBox(height: 18),
+            const Text(
+              'TARGET GOAL & PURPOSE',
+              style: TextStyle(
+                color: Color(0xff717886),
+                fontSize: 11,
+                letterSpacing: 1.8,
+                fontWeight: FontWeight.w900,
               ),
-              OutlinedButton.icon(
-                onPressed: primarySession == null
-                    ? null
-                    : () => _openSessionDetail(context, primarySession, name),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xff4d5563),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 9,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              target,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xff151820),
+                fontSize: 23,
+                height: 1.18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xffe0e4ec)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x12000000),
+                    blurRadius: 18,
+                    offset: Offset(0, 8),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'ACTIVE REMOTE WORKTIME STREAM',
+                    style: TextStyle(
+                      color: Color(0xff747b88),
+                      fontSize: 10,
+                      letterSpacing: 1.6,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                  side: const BorderSide(color: Color(0xffdce2eb)),
-                  textStyle: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 7,
+                        height: 7,
+                        margin: const EdgeInsets.only(top: 7),
+                        decoration: BoxDecoration(
+                          color: tint.dot,
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '“$stream”',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: tint.text,
+                            fontSize: 16,
+                            height: 1.25,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _TinyMeta(label: 'ELAPSED', value: elapsed),
+                      ),
+                      _TinyMeta(label: 'SYNC ID', value: syncId),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1, color: Color(0xffe4e7ee)),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      text: 'Completed calls: ',
+                      style: const TextStyle(
+                        color: Color(0xff747b88),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      children: [
+                        TextSpan(
+                          text: '$completedCalls',
+                          style: const TextStyle(
+                            color: Color(0xff151820),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                icon: const Icon(Icons.shield_outlined, size: 15),
-                label: const Text('LEASH CODE'),
-              ),
-              const SizedBox(width: 8),
-              IconButton.outlined(
-                onPressed: primarySession == null
-                    ? null
-                    : () => _openSessionDetail(context, primarySession, name),
-                style: IconButton.styleFrom(
-                  side: const BorderSide(color: Color(0xffdce2eb)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
+                OutlinedButton.icon(
+                  onPressed: primarySession == null
+                      ? null
+                      : () => _openSessionDetail(context, primarySession, name),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xff4d5563),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 9,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    side: const BorderSide(color: Color(0xffdce2eb)),
+                    textStyle: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
+                  icon: const Icon(Icons.shield_outlined, size: 15),
+                  label: const Text('LEASH CODE'),
                 ),
-                icon: const Icon(Icons.north_east, size: 17),
-              ),
-            ],
-          ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  onPressed: primarySession == null
+                      ? null
+                      : () => _openSessionDetail(context, primarySession, name),
+                  style: IconButton.styleFrom(
+                    side: const BorderSide(color: Color(0xffdce2eb)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  icon: const Icon(Icons.north_east, size: 17),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -2057,7 +1887,8 @@ class _AgentActionRow extends StatelessWidget {
 void _openSessionDetail(BuildContext context, Map session, String agentName) {
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => _SessionDetailPage(session: session, agentName: agentName),
+      builder: (_) =>
+          _SessionDetailPage(session: session, agentName: agentName),
     ),
   );
 }
@@ -2070,8 +1901,9 @@ class _SessionDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final events =
-        ((session['events'] as List?) ?? const []).whereType<Map>().toList();
+    final events = ((session['events'] as List?) ?? const [])
+        .whereType<Map>()
+        .toList();
     final mcpServers =
         ((session['mcp_servers'] as List?) ??
                 (session['mcpServers'] as List?) ??
@@ -2080,7 +1912,9 @@ class _SessionDetailPage extends StatelessWidget {
             .where((item) => item.trim().isNotEmpty)
             .toList();
     final project =
-        _projectNameFromAny(session['project_path'] ?? session['projectPath']) ??
+        _projectNameFromAny(
+          session['project_path'] ?? session['projectPath'],
+        ) ??
         'No project';
     return Scaffold(
       backgroundColor: const Color(0xffeef1f6),
@@ -2119,7 +1953,8 @@ class _SessionDetailPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        session['summary']?.toString() ?? 'Session captured by OpenLeash.',
+                        session['summary']?.toString() ??
+                            'Session captured by OpenLeash.',
                         style: const TextStyle(
                           color: Color(0xff303641),
                           height: 1.35,
@@ -2134,19 +1969,25 @@ class _SessionDetailPage extends StatelessWidget {
                           _Pill(icon: Icons.folder_outlined, label: project),
                           _Pill(
                             icon: Icons.timer_outlined,
-                            label: _formatDuration(session['duration_seconds'] ?? session['durationSeconds']),
+                            label: _formatDuration(
+                              session['duration_seconds'] ??
+                                  session['durationSeconds'],
+                            ),
                           ),
                           _Pill(
                             icon: Icons.account_tree_outlined,
-                            label: '${_formatDuration(session['subagent_seconds'] ?? session['subagentSeconds'])} subagents',
+                            label:
+                                '${_formatDuration(session['subagent_seconds'] ?? session['subagentSeconds'])} subagents',
                           ),
                           _Pill(
                             icon: Icons.list_alt,
-                            label: '${session['event_count'] ?? session['eventCount'] ?? events.length} events',
+                            label:
+                                '${session['event_count'] ?? session['eventCount'] ?? events.length} events',
                           ),
                           _Pill(
                             icon: Icons.pending_actions,
-                            label: '${session['approval_count'] ?? session['approvalCount'] ?? 0} approvals',
+                            label:
+                                '${session['approval_count'] ?? session['approvalCount'] ?? 0} approvals',
                           ),
                           for (final server in mcpServers)
                             _Pill(icon: Icons.hub_outlined, label: server),
@@ -2169,7 +2010,11 @@ class _SessionDetailPage extends StatelessWidget {
                         )
                       : Column(
                           children: [
-                            for (var index = 0; index < events.length; index++) ...[
+                            for (
+                              var index = 0;
+                              index < events.length;
+                              index++
+                            ) ...[
                               _AgentActionRow(item: events[index]),
                               if (index != events.length - 1)
                                 const Divider(height: 18),
@@ -2928,8 +2773,7 @@ class _ApprovalCardState extends State<_ApprovalCard> {
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
-                onPressed: () =>
-                    setState(() => _showGuidance = !_showGuidance),
+                onPressed: () => setState(() => _showGuidance = !_showGuidance),
                 child: Text(
                   _showGuidance
                       ? 'Hide guidance'
