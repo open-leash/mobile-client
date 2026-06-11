@@ -15,6 +15,9 @@ import 'openleash_public_config.dart';
 
 const _productionCloudApiUrl = openLeashPublicCloudApiUrl;
 const _redirectUri = openLeashAuthCallbackUri;
+const _privacyUrl = 'https://openleash.com/privacy';
+const _supportUrl = 'https://openleash.com/support';
+const _deleteAccountUrl = 'https://openleash.com/account/delete';
 const _storageKey = 'openleash.mobile.session.v1';
 const _functionHeader = 'x-openleash-api-function';
 const _versionHeader = 'x-openleash-api-version';
@@ -471,6 +474,13 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
     setStateSafe(() {});
   }
 
+  Future<void> _openExternalPage(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      setStateSafe(() => _error = 'Could not open $url.');
+    }
+  }
+
   void setStateSafe(VoidCallback fn) {
     if (!mounted) return;
     setState(fn);
@@ -599,7 +609,13 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(20, 22, 20, 32),
                 children: [
-                  _LogoHeader(signedIn: _signedIn, onSignOut: _signOut),
+                  _LogoHeader(
+                    signedIn: _signedIn,
+                    onSignOut: _signOut,
+                    onPrivacy: () => _openExternalPage(_privacyUrl),
+                    onSupport: () => _openExternalPage(_supportUrl),
+                    onDeleteAccount: () => _openExternalPage(_deleteAccountUrl),
+                  ),
                   SizedBox(height: _signedIn ? 20 : 18),
                   if (_error != null) _ErrorBanner(message: _error!),
                   if (_busy) const LinearProgressIndicator(minHeight: 3),
@@ -689,6 +705,12 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
               }),
             ),
           ],
+          const SizedBox(height: 16),
+          _LegalLinks(
+            onPrivacy: () => _openExternalPage(_privacyUrl),
+            onSupport: () => _openExternalPage(_supportUrl),
+            onDeleteAccount: () => _openExternalPage(_deleteAccountUrl),
+          ),
         ],
       ),
     );
@@ -850,6 +872,12 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
                   ],
                 ],
               ),
+      ),
+      const SizedBox(height: 16),
+      _LegalLinks(
+        onPrivacy: () => _openExternalPage(_privacyUrl),
+        onSupport: () => _openExternalPage(_supportUrl),
+        onDeleteAccount: () => _openExternalPage(_deleteAccountUrl),
       ),
     ];
   }
@@ -1044,10 +1072,19 @@ class ApprovalContextLine {
 }
 
 class _LogoHeader extends StatelessWidget {
-  const _LogoHeader({required this.signedIn, required this.onSignOut});
+  const _LogoHeader({
+    required this.signedIn,
+    required this.onSignOut,
+    required this.onPrivacy,
+    required this.onSupport,
+    required this.onDeleteAccount,
+  });
 
   final bool signedIn;
   final VoidCallback onSignOut;
+  final VoidCallback onPrivacy;
+  final VoidCallback onSupport;
+  final VoidCallback onDeleteAccount;
 
   @override
   Widget build(BuildContext context) {
@@ -1077,8 +1114,41 @@ class _LogoHeader extends StatelessWidget {
             ),
             onSelected: (value) {
               if (value == 'sign-out') onSignOut();
+              if (value == 'privacy') onPrivacy();
+              if (value == 'support') onSupport();
+              if (value == 'delete-account') onDeleteAccount();
             },
             itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'privacy',
+                child: Row(
+                  children: [
+                    Icon(Icons.privacy_tip_outlined, size: 20),
+                    SizedBox(width: 10),
+                    Text('Privacy Policy'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'support',
+                child: Row(
+                  children: [
+                    Icon(Icons.support_agent_rounded, size: 20),
+                    SizedBox(width: 10),
+                    Text('Support'),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'delete-account',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline_rounded, size: 20),
+                    SizedBox(width: 10),
+                    Text('Delete account'),
+                  ],
+                ),
+              ),
               PopupMenuItem(
                 value: 'sign-out',
                 child: Row(
@@ -1092,6 +1162,52 @@ class _LogoHeader extends StatelessWidget {
             ],
           ),
       ],
+    );
+  }
+}
+
+class _LegalLinks extends StatelessWidget {
+  const _LegalLinks({
+    required this.onPrivacy,
+    required this.onSupport,
+    required this.onDeleteAccount,
+  });
+
+  final VoidCallback onPrivacy;
+  final VoidCallback onSupport;
+  final VoidCallback onDeleteAccount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _TextLink(label: 'Privacy Policy', onPressed: onPrivacy),
+        _TextLink(label: 'Support', onPressed: onSupport),
+        _TextLink(label: 'Delete account', onPressed: onDeleteAccount),
+      ],
+    );
+  }
+}
+
+class _TextLink extends StatelessWidget {
+  const _TextLink({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      style: TextButton.styleFrom(
+        foregroundColor: const Color(0xff596273),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+      ),
+      onPressed: onPressed,
+      child: Text(label),
     );
   }
 }
