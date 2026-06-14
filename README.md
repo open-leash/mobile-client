@@ -1,28 +1,51 @@
-# OpenLeash Mobile Client 📱⚡
+<div align="center">
 
-[![Flutter](https://img.shields.io/badge/flutter-mobile-02569b)](#)
-[![iOS](https://img.shields.io/badge/ios-supported-111718)](#)
-[![Android](https://img.shields.io/badge/android-supported-3ddc84)](#)
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:22C55E,45:0EA5E9,100:111827&height=220&section=header&text=Mobile%20Client&fontSize=54&fontColor=ffffff&fontAlignY=38&desc=Approvals%20in%20your%20pocket.&descSize=18&descAlignY=58" width="100%" />
 
-The iOS/Android companion app for approving OpenLeash decisions away from the desktop.
+<p>
+  <img src="https://img.shields.io/badge/Flutter-iOS%20%2B%20Android-02569B?style=for-the-badge&logo=flutter&logoColor=white" />
+  <img src="https://img.shields.io/badge/Approvals-fast%20decisions-22C55E?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Auth-existing%20users-111827?style=for-the-badge" />
+</p>
 
-## What It Does
+<h3>📱 Approve, deny, and stay aware away from the desktop.</h3>
 
-- Discovers an organization's managed API
-- Signs existing users in with OAuth / SSO
-- Registers the phone for approval workflows
+</div>
+
+---
+
+## ✨ What this app is
+
+`mobile-client` is the iOS/Android companion app for OpenLeash approvals.
+
+It connects to OpenLeash Cloud or a customer-hosted API, signs existing users in through the configured identity provider, registers the phone, and lets users approve or deny held agent actions.
+
+Mobile is sign-in only. Account creation happens from desktop or web.
+
+---
+
+## 🔥 What it does
+
+- Discovers the selected API and organization
+- Starts OAuth/SSO sign-in
+- Registers mobile devices
 - Shows pending decisions
-- Sends allow/deny responses back to the API
+- Sends allow/deny responses
+- Supports approval flows when users are away from the desktop
 
-Mobile is sign-in only. Create the OpenLeash account from desktop or the web, then use the phone as the approval companion.
+---
 
-## Run
+## 🛠 Run locally
 
-Start the local public-cloud dev stack first:
+Start a local cloud simulation first:
 
 ```bash
-./run.py --mode public-cloud --clean-slate
+python3 run.py
 ```
+
+Choose **OpenLeash Cloud**.
+
+Then:
 
 ```bash
 cd apps/mobile-client
@@ -30,7 +53,7 @@ flutter pub get
 flutter run
 ```
 
-iOS simulator against the local public-cloud API:
+iOS simulator:
 
 ```bash
 flutter run -d ios \
@@ -38,7 +61,7 @@ flutter run -d ios \
   --dart-define=OPENLEASH_DASHBOARD_URL=http://localhost:9302
 ```
 
-Android emulator against the local public-cloud API:
+Android emulator:
 
 ```bash
 flutter run -d android \
@@ -46,14 +69,26 @@ flutter run -d android \
   --dart-define=OPENLEASH_DASHBOARD_URL=http://10.0.2.2:9302
 ```
 
-## Local API Tips
+---
+
+## 🧠 Local API tips
 
 - iOS Simulator can usually reach `http://localhost:9318`.
 - Android Emulator may need `http://10.0.2.2:9318`.
 - Physical devices need your laptop's LAN IP.
-- Managed private-cloud and OpenLeash Cloud discover identity from the API.
-- `./run.py --real-oauth` works cleanly on iOS Simulator with a localhost OAuth redirect. Android Emulator real OAuth also needs the matching `10.0.2.2` redirect URI registered with the identity provider; otherwise use the default local dev-auth shortcut for Android dev.
+- Real OAuth requires matching provider redirect setup.
+- Local dev auth is easiest for quick app testing.
 
-## UX Rule
+---
 
-Approvals should be fast, readable, and hard to misunderstand. The mobile app is not where users debug policy theory; it is where they make a crisp allow/deny decision.
+## 🎨 UX rule
+
+Approvals should be fast, readable, and hard to misunderstand.
+
+This is not where users debug policy theory. This is where they make a crisp allow/deny decision.
+
+<div align="center">
+
+### The right human, at the right moment, with the right context.
+
+</div>
