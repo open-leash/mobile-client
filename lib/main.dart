@@ -30,6 +30,29 @@ const _contracts = <String, String>{
   'mobileDecisionResolve': '2026-05-22.mobile-decision-resolve.v1',
 };
 
+class _OlTheme {
+  static const bg = Color(0xfffafaf6);
+  static const bg2 = Color(0xfff3f2ec);
+  static const surface = Color(0xffffffff);
+  static const line = Color(0xffe8e5dd);
+  static const line2 = Color(0xffd8d3c7);
+  static const ink = Color(0xff0c0c0a);
+  static const ink2 = Color(0xff2a2a26);
+  static const dim = Color(0xff6b6b63);
+  static const mute = Color(0xff9d9c92);
+  static const accent = Color(0xff5b4fe5);
+  static const accent2 = Color(0xffec4899);
+  static const accentSoft = Color(0xffefedfd);
+  static const danger = Color(0xffe94e3a);
+  static const dangerSoft = Color(0xfffdeae6);
+  static const ok = Color(0xff18a558);
+  static const okSoft = Color(0xffe6f5ed);
+
+  static const panelShadow = [
+    BoxShadow(color: Color(0x160c0c0a), blurRadius: 28, offset: Offset(0, 14)),
+  ];
+}
+
 String _defaultCloudApiUrl() {
   const configured = String.fromEnvironment('OPENLEASH_CLOUD_API_URL');
   if (configured.isNotEmpty) return configured;
@@ -59,15 +82,23 @@ class OpenLeashMobileApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xffeef1f6),
+        scaffoldBackgroundColor: _OlTheme.bg,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xffbed0ff),
+          seedColor: _OlTheme.accent,
           brightness: Brightness.light,
+          primary: _OlTheme.ink,
+          secondary: _OlTheme.accent,
+          surface: _OlTheme.surface,
+          error: _OlTheme.danger,
         ),
         fontFamily: Platform.isIOS ? 'SF Pro Display' : null,
-        textTheme: Theme.of(context).textTheme.apply(
-          bodyColor: const Color(0xff0f1219),
-          displayColor: const Color(0xff0f1219),
+        textTheme: Theme.of(
+          context,
+        ).textTheme.apply(bodyColor: _OlTheme.ink, displayColor: _OlTheme.ink),
+        dividerTheme: const DividerThemeData(color: _OlTheme.line),
+        progressIndicatorTheme: const ProgressIndicatorThemeData(
+          color: _OlTheme.accent,
+          linearTrackColor: _OlTheme.accentSoft,
         ),
       ),
       builder: (context, child) {
@@ -599,28 +630,46 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: RefreshIndicator(
-              onRefresh: () => _refreshState(showNotifications: true),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 32),
-                children: [
-                  _LogoHeader(
-                    signedIn: _signedIn,
-                    onSignOut: _signOut,
-                    onPrivacy: () => _openExternalPage(_privacyUrl),
-                    onSupport: () => _openExternalPage(_supportUrl),
-                    onDeleteAccount: () => _openExternalPage(_deleteAccountUrl),
-                  ),
-                  SizedBox(height: _signedIn ? 20 : 18),
-                  if (_error != null) _ErrorBanner(message: _error!),
-                  if (_busy) const LinearProgressIndicator(minHeight: 3),
-                  if (!_signedIn) ..._wizard() else ..._approvalHome(),
-                ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              _OlTheme.bg,
+              _OlTheme.surface,
+              Color.alphaBlend(
+                _OlTheme.accent2.withValues(alpha: 0.025),
+                _OlTheme.bg,
+              ),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: RefreshIndicator(
+                color: _OlTheme.accent,
+                onRefresh: () => _refreshState(showNotifications: true),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 32),
+                  children: [
+                    _LogoHeader(
+                      signedIn: _signedIn,
+                      onSignOut: _signOut,
+                      onPrivacy: () => _openExternalPage(_privacyUrl),
+                      onSupport: () => _openExternalPage(_supportUrl),
+                      onDeleteAccount: () =>
+                          _openExternalPage(_deleteAccountUrl),
+                    ),
+                    SizedBox(height: _signedIn ? 20 : 18),
+                    if (_error != null) _ErrorBanner(message: _error!),
+                    if (_busy) const LinearProgressIndicator(minHeight: 3),
+                    if (!_signedIn) ..._wizard() else ..._approvalHome(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -643,16 +692,17 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
             style: TextStyle(
               fontSize: 32,
               height: 1.02,
-              fontWeight: FontWeight.w900,
+              letterSpacing: -1.1,
+              fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 8),
           const Text(
             'Use an existing OpenLeash Cloud or company account to approve agent actions from your phone.',
             style: TextStyle(
-              color: Color(0xff8a909e),
+              color: _OlTheme.dim,
               fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 18),
@@ -748,11 +798,8 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
               children: [
                 const CircleAvatar(
                   radius: 24,
-                  backgroundColor: Color(0xffe8f6f1),
-                  child: Icon(
-                    Icons.verified_user_outlined,
-                    color: Color(0xff0e755e),
-                  ),
+                  backgroundColor: _OlTheme.okSoft,
+                  child: Icon(Icons.verified_user_outlined, color: _OlTheme.ok),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -765,7 +812,8 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 19,
-                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.3,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 3),
@@ -775,8 +823,8 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 14,
-                          color: Color(0xff8a909e),
-                          fontWeight: FontWeight.w700,
+                          color: _OlTheme.dim,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
@@ -855,7 +903,7 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
             ? const Text(
                 'No history yet.',
                 style: TextStyle(
-                  color: Color(0xff8a909e),
+                  color: _OlTheme.dim,
                   fontWeight: FontWeight.w700,
                 ),
               )
@@ -1091,26 +1139,31 @@ class _LogoHeader extends StatelessWidget {
     return Row(
       children: [
         ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           child: Image.asset(
             'assets/openleash-icon.png',
-            width: 38,
-            height: 38,
+            width: 34,
+            height: 34,
             fit: BoxFit.contain,
           ),
         ),
         const SizedBox(width: 12),
         const Text(
           'OpenLeash',
-          style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900),
+          style: TextStyle(
+            fontSize: 25,
+            letterSpacing: -0.7,
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const Spacer(),
         if (signedIn)
           PopupMenuButton<String>(
             tooltip: 'Settings',
-            icon: const Icon(Icons.settings_outlined, size: 28),
+            icon: const Icon(Icons.menu_rounded, size: 28),
+            color: _OlTheme.ink,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
             ),
             onSelected: (value) {
               if (value == 'sign-out') onSignOut();
@@ -1202,9 +1255,9 @@ class _TextLink extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextButton(
       style: TextButton.styleFrom(
-        foregroundColor: const Color(0xff596273),
+        foregroundColor: _OlTheme.dim,
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
       ),
       onPressed: onPressed,
       child: Text(label),
@@ -1222,16 +1275,10 @@ class _Panel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: const Color(0xffdde2eb)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x14000000),
-            blurRadius: 26,
-            offset: Offset(0, 12),
-          ),
-        ],
+        color: _OlTheme.surface.withValues(alpha: 0.94),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _OlTheme.line2),
+        boxShadow: _OlTheme.panelShadow,
       ),
       child: child,
     );
@@ -1257,10 +1304,20 @@ class _Input extends StatelessWidget {
         labelText: label,
         hintText: hint,
         filled: true,
-        fillColor: const Color(0xfff7f8fa),
+        fillColor: _OlTheme.bg2,
+        labelStyle: const TextStyle(color: _OlTheme.dim),
+        hintStyle: const TextStyle(color: _OlTheme.mute),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xffdde2eb)),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _OlTheme.line2),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _OlTheme.line2),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _OlTheme.accent, width: 1.4),
         ),
       ),
     );
@@ -1282,10 +1339,10 @@ class _PrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.icon(
       style: FilledButton.styleFrom(
-        backgroundColor: const Color(0xff0f1219),
-        foregroundColor: Colors.white,
+        backgroundColor: _OlTheme.ink,
+        foregroundColor: _OlTheme.bg,
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       onPressed: onPressed,
       icon: Icon(icon),
@@ -1309,13 +1366,13 @@ class _GoogleButton extends StatelessWidget {
       width: double.infinity,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xff1f1f1f),
+          backgroundColor: _OlTheme.ink,
+          foregroundColor: _OlTheme.bg,
           padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          side: const BorderSide(color: Color(0xffdadce0)),
+          side: const BorderSide(color: _OlTheme.ink),
         ),
         onPressed: busy ? null : onPressed,
         child: Row(
@@ -1326,9 +1383,9 @@ class _GoogleButton extends StatelessWidget {
               height: 30,
               width: 30,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: _OlTheme.surface,
                 borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Color(0xffdadce0)),
+                border: Border.all(color: _OlTheme.line2),
               ),
               child: const Center(
                 child: Text(
@@ -1372,13 +1429,13 @@ class _ProviderButton extends StatelessWidget {
       width: double.infinity,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          backgroundColor: Colors.white,
-          foregroundColor: const Color(0xff1f1f1f),
+          backgroundColor: _OlTheme.surface,
+          foregroundColor: _OlTheme.ink,
           padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          side: const BorderSide(color: Color(0xffdadce0)),
+          side: const BorderSide(color: _OlTheme.line2),
         ),
         onPressed: busy ? null : onPressed,
         child: Row(
@@ -1388,7 +1445,7 @@ class _ProviderButton extends StatelessWidget {
             Text(
               mark,
               style: const TextStyle(
-                color: Color(0xff2563eb),
+                color: _OlTheme.accent,
                 fontSize: 19,
                 fontWeight: FontWeight.w900,
               ),
@@ -1416,8 +1473,10 @@ class _SecondaryButton extends StatelessWidget {
     return OutlinedButton(
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        side: const BorderSide(color: Color(0xffdde2eb)),
+        backgroundColor: _OlTheme.surface,
+        foregroundColor: _OlTheme.ink,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        side: const BorderSide(color: _OlTheme.line2),
       ),
       onPressed: onPressed,
       child: Text(
@@ -1439,12 +1498,13 @@ class _ErrorBanner extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xfffff2f0),
-        borderRadius: BorderRadius.circular(18),
+        color: _OlTheme.dangerSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _OlTheme.danger.withValues(alpha: 0.18)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, color: Color(0xffb3261e)),
+          const Icon(Icons.error_outline, color: _OlTheme.danger),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -1486,19 +1546,19 @@ class _ActiveSessionHeader extends StatelessWidget {
           child: Text(
             'ACTIVE AGENT SESSIONS ($count)',
             style: const TextStyle(
-              color: Color(0xff5c6370),
+              color: _OlTheme.accent,
               fontSize: 13,
               letterSpacing: 2.2,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ),
         const Text(
           'Realtime Remote Nodes',
           style: TextStyle(
-            color: Color(0xff6e7582),
+            color: _OlTheme.dim,
             fontSize: 12,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
@@ -1517,8 +1577,9 @@ class _DashboardMetric extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
-        color: const Color(0xfff4f6fb),
-        borderRadius: BorderRadius.circular(18),
+        color: _OlTheme.bg2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _OlTheme.line),
       ),
       child: Column(
         children: [
@@ -1530,8 +1591,8 @@ class _DashboardMetric extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xff8a909e),
-              fontWeight: FontWeight.w800,
+              color: _OlTheme.dim,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -1548,7 +1609,7 @@ class _EmptyApprovals extends StatelessWidget {
     return const _Panel(
       child: Column(
         children: [
-          Icon(Icons.computer_rounded, size: 48, color: Color(0xff4f5a6c)),
+          Icon(Icons.computer_rounded, size: 48, color: _OlTheme.accent),
           SizedBox(height: 12),
           Text(
             'No agents connected yet',
@@ -1558,10 +1619,7 @@ class _EmptyApprovals extends StatelessWidget {
           Text(
             'Install OpenLeash Client on your Mac or Windows computer. Your agents and approvals will appear here.',
             textAlign: TextAlign.center,
-            style: TextStyle(
-              color: Color(0xff8a909e),
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -1610,15 +1668,9 @@ class _AgentCardState extends State<_AgentCard> {
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: tint.card,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: tint.border),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 24,
-              offset: Offset(0, 12),
-            ),
-          ],
+          boxShadow: _OlTheme.panelShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1667,10 +1719,10 @@ class _AgentCardState extends State<_AgentCard> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Color(0xff006bd6),
+                                color: _OlTheme.accent,
                                 fontSize: 11,
                                 letterSpacing: 1.9,
-                                fontWeight: FontWeight.w900,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                           ),
@@ -1681,9 +1733,9 @@ class _AgentCardState extends State<_AgentCard> {
                           Text(
                             'Node : $nodeCount',
                             style: const TextStyle(
-                              color: Color(0xff5f6674),
+                              color: _OlTheme.dim,
                               fontSize: 12,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -1696,15 +1748,15 @@ class _AgentCardState extends State<_AgentCard> {
               ],
             ),
             const SizedBox(height: 22),
-            const Divider(height: 1, color: Color(0xffe4e7ee)),
+            const Divider(height: 1, color: _OlTheme.line),
             const SizedBox(height: 18),
             const Text(
               'TARGET GOAL & PURPOSE',
               style: TextStyle(
-                color: Color(0xff717886),
+                color: _OlTheme.dim,
                 fontSize: 11,
                 letterSpacing: 1.8,
-                fontWeight: FontWeight.w900,
+                fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 8),
@@ -1713,10 +1765,11 @@ class _AgentCardState extends State<_AgentCard> {
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                color: Color(0xff151820),
+                color: _OlTheme.ink,
                 fontSize: 23,
                 height: 1.18,
-                fontWeight: FontWeight.w900,
+                letterSpacing: -0.45,
+                fontWeight: FontWeight.w800,
               ),
             ),
             const SizedBox(height: 16),
@@ -1724,12 +1777,12 @@ class _AgentCardState extends State<_AgentCard> {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xffe0e4ec)),
+                color: _OlTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _OlTheme.line),
                 boxShadow: const [
                   BoxShadow(
-                    color: Color(0x12000000),
+                    color: Color(0x0d0c0c0a),
                     blurRadius: 18,
                     offset: Offset(0, 8),
                   ),
@@ -1741,10 +1794,10 @@ class _AgentCardState extends State<_AgentCard> {
                   const Text(
                     'ACTIVE REMOTE WORKTIME STREAM',
                     style: TextStyle(
-                      color: Color(0xff747b88),
+                      color: _OlTheme.dim,
                       fontSize: 10,
                       letterSpacing: 1.6,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -1789,7 +1842,7 @@ class _AgentCardState extends State<_AgentCard> {
               ),
             ),
             const SizedBox(height: 16),
-            const Divider(height: 1, color: Color(0xffe4e7ee)),
+            const Divider(height: 1, color: _OlTheme.line),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -1798,7 +1851,7 @@ class _AgentCardState extends State<_AgentCard> {
                     TextSpan(
                       text: 'Completed calls: ',
                       style: const TextStyle(
-                        color: Color(0xff747b88),
+                        color: _OlTheme.dim,
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
@@ -1806,7 +1859,7 @@ class _AgentCardState extends State<_AgentCard> {
                         TextSpan(
                           text: '$completedCalls',
                           style: const TextStyle(
-                            color: Color(0xff151820),
+                            color: _OlTheme.ink,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -1819,7 +1872,7 @@ class _AgentCardState extends State<_AgentCard> {
                       ? null
                       : () => _openSessionDetail(context, primarySession, name),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xff4d5563),
+                    foregroundColor: _OlTheme.dim,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 9,
@@ -1827,7 +1880,7 @@ class _AgentCardState extends State<_AgentCard> {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(999),
                     ),
-                    side: const BorderSide(color: Color(0xffdce2eb)),
+                    side: const BorderSide(color: _OlTheme.line2),
                     textStyle: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w900,
@@ -1842,7 +1895,8 @@ class _AgentCardState extends State<_AgentCard> {
                       ? null
                       : () => _openSessionDetail(context, primarySession, name),
                   style: IconButton.styleFrom(
-                    side: const BorderSide(color: Color(0xffdce2eb)),
+                    foregroundColor: _OlTheme.ink,
+                    side: const BorderSide(color: _OlTheme.line2),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(999),
                     ),
@@ -1918,7 +1972,7 @@ class _TinyMeta extends StatelessWidget {
       TextSpan(
         text: '$label: ',
         style: const TextStyle(
-          color: Color(0xff747b88),
+          color: _OlTheme.dim,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
@@ -1926,7 +1980,7 @@ class _TinyMeta extends StatelessWidget {
           TextSpan(
             text: value,
             style: const TextStyle(
-              color: Color(0xff252a33),
+              color: _OlTheme.ink2,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -1973,7 +2027,7 @@ class _AgentActionRow extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xff303641),
+                      color: _OlTheme.ink2,
                       height: 1.25,
                       fontWeight: FontWeight.w800,
                     ),
@@ -1984,7 +2038,7 @@ class _AgentActionRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xff8a909e),
+                      color: _OlTheme.dim,
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1992,7 +2046,7 @@ class _AgentActionRow extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Color(0xff9aa1ad)),
+            const Icon(Icons.chevron_right, color: _OlTheme.mute),
           ],
         ),
       ),
@@ -2033,11 +2087,11 @@ class _SessionDetailPage extends StatelessWidget {
         ) ??
         'No project';
     return Scaffold(
-      backgroundColor: const Color(0xffeef1f6),
+      backgroundColor: _OlTheme.bg,
       appBar: AppBar(
         title: const Text('Session'),
-        backgroundColor: const Color(0xffeef1f6),
-        foregroundColor: const Color(0xff0f1219),
+        backgroundColor: _OlTheme.bg,
+        foregroundColor: _OlTheme.ink,
         elevation: 0,
       ),
       body: SafeArea(
@@ -2056,15 +2110,16 @@ class _SessionDetailPage extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 25,
                           height: 1.08,
-                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.6,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 7),
                       Text(
                         '$agentName · $project · ${_formatDuration(session['duration_seconds'] ?? session['durationSeconds'])} · ${_formatDateTime(session['last_activity_at'] ?? session['lastActivityAt'])}',
                         style: const TextStyle(
-                          color: Color(0xff8a909e),
-                          fontWeight: FontWeight.w800,
+                          color: _OlTheme.dim,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -2072,9 +2127,9 @@ class _SessionDetailPage extends StatelessWidget {
                         session['summary']?.toString() ??
                             'Session captured by OpenLeash.',
                         style: const TextStyle(
-                          color: Color(0xff303641),
+                          color: _OlTheme.ink2,
                           height: 1.35,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 14),
@@ -2120,7 +2175,7 @@ class _SessionDetailPage extends StatelessWidget {
                       ? const Text(
                           'No event details captured for this session.',
                           style: TextStyle(
-                            color: Color(0xff8a909e),
+                            color: _OlTheme.dim,
                             fontWeight: FontWeight.w700,
                           ),
                         )
@@ -2202,7 +2257,7 @@ class _HistoryRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xff8a909e),
+                      color: _OlTheme.dim,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -2211,11 +2266,7 @@ class _HistoryRow extends StatelessWidget {
             ),
             const Padding(
               padding: EdgeInsets.only(top: 5),
-              child: Icon(
-                Icons.chevron_right,
-                color: Color(0xff9aa1ad),
-                size: 22,
-              ),
+              child: Icon(Icons.chevron_right, color: _OlTheme.mute, size: 22),
             ),
           ],
         ),
@@ -2268,11 +2319,11 @@ class _EventDetailPage extends StatelessWidget {
     final prompt = _eventPrompt(item);
 
     return Scaffold(
-      backgroundColor: const Color(0xffeef1f6),
+      backgroundColor: _OlTheme.bg,
       appBar: AppBar(
         title: const Text('Event details'),
-        backgroundColor: const Color(0xffeef1f6),
-        foregroundColor: const Color(0xff0f1219),
+        backgroundColor: _OlTheme.bg,
+        foregroundColor: _OlTheme.ink,
         elevation: 0,
       ),
       body: SafeArea(
@@ -2313,15 +2364,16 @@ class _EventDetailPage extends StatelessWidget {
                                   style: const TextStyle(
                                     fontSize: 22,
                                     height: 1.08,
-                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.4,
+                                    fontWeight: FontWeight.w800,
                                   ),
                                 ),
                                 const SizedBox(height: 7),
                                 Text(
                                   '$agent · $createdAt',
                                   style: const TextStyle(
-                                    color: Color(0xff8a909e),
-                                    fontWeight: FontWeight.w800,
+                                    color: _OlTheme.dim,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
                               ],
@@ -2386,7 +2438,7 @@ class _EventDetailPage extends StatelessWidget {
                           Text(
                             purpose,
                             style: const TextStyle(
-                              color: Color(0xff303641),
+                              color: _OlTheme.ink2,
                               height: 1.35,
                               fontWeight: FontWeight.w700,
                             ),
@@ -2406,7 +2458,7 @@ class _EventDetailPage extends StatelessWidget {
                           Text(
                             prompt,
                             style: const TextStyle(
-                              color: Color(0xff697181),
+                              color: _OlTheme.dim,
                               height: 1.35,
                               fontWeight: FontWeight.w700,
                             ),
@@ -2454,7 +2506,7 @@ class _PolicyDetail extends StatelessWidget {
           Text(
             explanation,
             style: const TextStyle(
-              color: Color(0xff303641),
+              color: _OlTheme.ink2,
               height: 1.35,
               fontWeight: FontWeight.w700,
             ),
@@ -2468,7 +2520,7 @@ class _PolicyDetail extends StatelessWidget {
               child: Text(
                 '"$item"',
                 style: const TextStyle(
-                  color: Color(0xff697181),
+                  color: _OlTheme.dim,
                   height: 1.3,
                   fontWeight: FontWeight.w700,
                 ),
@@ -2592,19 +2644,19 @@ _AgentTint _agentTint(String status) {
   }
   if (value == 'deny' || value == 'denied') {
     return const _AgentTint(
-      card: Color(0xfffff8f8),
-      surface: Color(0xffffecec),
-      border: Color(0xffffc8c8),
-      text: Color(0xffb3261e),
-      dot: Color(0xffd93025),
+      card: _OlTheme.surface,
+      surface: _OlTheme.dangerSoft,
+      border: Color(0xfff6c8c0),
+      text: _OlTheme.danger,
+      dot: _OlTheme.danger,
     );
   }
   return const _AgentTint(
-    card: Color(0xfff7fffb),
-    surface: Color(0xffe9fff6),
-    border: Color(0xff9ee8c1),
-    text: Color(0xff047857),
-    dot: Color(0xff17c987),
+    card: _OlTheme.surface,
+    surface: _OlTheme.okSoft,
+    border: Color(0xffbfe8d0),
+    text: _OlTheme.ok,
+    dot: _OlTheme.ok,
   );
 }
 
@@ -2797,13 +2849,13 @@ String _truncate(String value, int max) {
 
 Color _decisionColor(String decision) {
   if (decision == 'allow' || decision == 'allowed') {
-    return const Color(0xff0e755e);
+    return _OlTheme.ok;
   }
   if (decision == 'deny' || decision == 'denied') {
-    return const Color(0xffb3261e);
+    return _OlTheme.danger;
   }
   if (decision == 'ask') return const Color(0xffa45f00);
-  return const Color(0xff4f5a6c);
+  return _OlTheme.dim;
 }
 
 IconData _decisionIcon(String decision) {
@@ -2858,7 +2910,7 @@ class _ApprovalCardState extends State<_ApprovalCard> {
             style: const TextStyle(
               fontSize: 17,
               height: 1.35,
-              color: Color(0xff303641),
+              color: _OlTheme.ink2,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -2907,10 +2959,21 @@ class _ApprovalCardState extends State<_ApprovalCard> {
                 decoration: InputDecoration(
                   hintText: 'Optional: tell the agent what to do instead',
                   filled: true,
-                  fillColor: const Color(0xfff7f8fb),
+                  fillColor: _OlTheme.bg2,
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: const BorderSide(color: Color(0xffe5e7ec)),
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _OlTheme.line2),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: _OlTheme.line2),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(
+                      color: _OlTheme.accent,
+                      width: 1.4,
+                    ),
                   ),
                 ),
               ),
@@ -2952,9 +3015,9 @@ class _ApprovalContextBox extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: Container(
         decoration: BoxDecoration(
-          color: const Color(0xfff7f8fb),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xffe3e7ef)),
+          color: _OlTheme.bg2,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _OlTheme.line),
         ),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 14),
@@ -2970,7 +3033,7 @@ class _ApprovalContextBox extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    color: Color(0xff555d6b),
+                    color: _OlTheme.dim,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -2999,9 +3062,9 @@ class _PurposeBox extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xfff7f8fb),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xffe3e7ef)),
+        color: _OlTheme.bg2,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _OlTheme.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3009,7 +3072,7 @@ class _PurposeBox extends StatelessWidget {
           const Text(
             'Why now',
             style: TextStyle(
-              color: Color(0xff8a909e),
+              color: _OlTheme.accent,
               fontSize: 12,
               fontWeight: FontWeight.w900,
             ),
@@ -3018,7 +3081,7 @@ class _PurposeBox extends StatelessWidget {
           Text(
             text,
             style: const TextStyle(
-              color: Color(0xff303641),
+              color: _OlTheme.ink2,
               height: 1.35,
               fontWeight: FontWeight.w800,
             ),
@@ -3041,7 +3104,7 @@ class _ContextQuote extends StatelessWidget {
       child: Text(
         '"$text"',
         style: const TextStyle(
-          color: Color(0xff2f3541),
+          color: _OlTheme.ink2,
           fontSize: 15,
           height: 1.35,
           fontWeight: FontWeight.w700,
@@ -3068,7 +3131,7 @@ class _ContextLine extends StatelessWidget {
             child: Text(
               line.role,
               style: const TextStyle(
-                color: Color(0xff697181),
+                color: _OlTheme.dim,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -3077,7 +3140,7 @@ class _ContextLine extends StatelessWidget {
             child: Text(
               line.content,
               style: const TextStyle(
-                color: Color(0xff303641),
+                color: _OlTheme.ink2,
                 height: 1.35,
                 fontWeight: FontWeight.w600,
               ),
@@ -3100,13 +3163,14 @@ class _Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
-        color: const Color(0xfff1f3f6),
+        color: _OlTheme.accentSoft,
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _OlTheme.accent.withValues(alpha: 0.12)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: const Color(0xff4a5160)),
+          Icon(icon, size: 18, color: _OlTheme.accent),
           const SizedBox(width: 6),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 240),
@@ -3116,7 +3180,7 @@ class _Pill extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 fontWeight: FontWeight.w800,
-                color: Color(0xff4a5160),
+                color: _OlTheme.accent,
               ),
             ),
           ),
