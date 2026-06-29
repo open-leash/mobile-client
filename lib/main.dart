@@ -27,7 +27,11 @@ const _contracts = <String, String>{
   'mobileAuthExchange': '2026-05-22.mobile-auth-exchange.v1',
   'mobileDeviceRegister': '2026-05-22.mobile-device-register.v1',
   'mobileState': '2026-05-22.mobile-state.v1',
+  'agentMonitoring': '2026-05-22.mobile-state.v1',
   'mobileDecisionResolve': '2026-05-22.mobile-decision-resolve.v1',
+  'tenantPluginsRead': '2026-06-20.tenant-plugins-read.v1',
+  'authAccountOutcomes': '2026-06-24.auth-account-outcomes.v1',
+  'adminPluginsWrite': '2026-06-20.admin-plugins-write.v1',
 };
 
 class _OlTheme {
@@ -170,6 +174,8 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
   List<dynamic> get _pendingApprovals =>
       (_state?['pendingApprovals'] as List?) ?? const [];
   List<dynamic> get _agents => (_state?['agents'] as List?) ?? const [];
+  List<dynamic> get _plugins => (_state?['plugins'] as List?) ?? const [];
+  List<dynamic> get _outcomes => (_state?['outcomes'] as List?) ?? const [];
   List<dynamic> get _recentActivity =>
       (_state?['recentActivity'] as List?) ?? const [];
 
@@ -442,6 +448,7 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       }
       if (response.statusCode >= 400) throw Exception(response.body);
       final data = jsonDecode(response.body) as Map<String, dynamic>;
+      await _hydratePlugins(data);
       setStateSafe(() => _state = data);
       if (showNotifications) {
         for (final approval in _pendingApprovals.cast<Map>()) {
@@ -453,6 +460,96 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       }
     } catch (_) {
       setStateSafe(() => _error = 'Could not refresh approvals from the API.');
+    }
+  }
+
+  Future<void> _hydratePlugins(Map<String, dynamic> data) async {
+    try {
+      final responses = await Future.wait([
+        _request('GET', '/v1/plugins', 'tenantPluginsRead'),
+        _request('GET', '/v1/outcomes', 'authAccountOutcomes', query: {'limit': '50'}),
+      ]);
+      if (responses[0].statusCode < 400) {
+        final body = jsonDecode(responses[0].body) as Map<String, dynamic>;
+        data['plugins'] = (body['plugins'] as List?) ?? const [];
+      }
+      if (responses[1].statusCode < 400) {
+        final body = jsonDecode(responses[1].body) as Map<String, dynamic>;
+        data['outcomes'] = (body['outcomes'] as List?) ?? const [];
+      }
+    } catch (_) {
+      data['plugins'] = data['plugins'] ?? const [];
+      data['outcomes'] = data['outcomes'] ?? const [];
+    }
+  }
+
+  Future<bool> _setPluginInstalled(Map plugin, bool installed) async {
+    final id = plugin['id']?.toString() ?? '';
+    if (id.isEmpty) return false;
+    try {
+      final response = await _request(
+        'POST',
+        '/v1/plugins/${Uri.encodeComponent(id)}/${installed ? 'install' : 'uninstall'}',
+        'adminPluginsWrite',
+      );
+      if (response.statusCode >= 400) throw Exception(await _responseMessage(response));
+      await _refreshState();
+      return true;
+    } catch (error) {
+      setStateSafe(() => _error = _cleanError(error));
+      return false;
+    }
+  }
+
+  Future<bool> _savePluginSettings(Map plugin, Map<String, dynamic> config) async {
+    final id = plugin['id']?.toString() ?? '';
+    if (id.isEmpty) return false;
+    try {
+      final response = await _request(
+        'POST',
+        '/v1/plugins/${Uri.encodeComponent(id)}/settings',
+        'adminPluginsWrite',
+        body: {'enabled': _pluginInstalled(plugin), 'config': config},
+      );
+      if (response.statusCode >= 400) throw Exception(await _responseMessage(response));
+      await _refreshState();
+      return true;
+    } catch (error) {
+      setStateSafe(() => _error = _cleanError(error));
+      return false;
+    }
+  }
+
+  Future<void> _setAgentMonitoring(Map agent, bool monitored) async {
+    final kind = _canonicalAgentKind(agent);
+    if (kind.isEmpty) return;
+    final previousState = _state == null
+        ? null
+        : Map<String, dynamic>.from(_state as Map<String, dynamic>);
+    setStateSafe(() {
+      final nextState = Map<String, dynamic>.from(_state ?? const {});
+      final nextAgents = ((_state?['agents'] as List?) ?? const [])
+          .map((item) {
+            if (item is! Map) return item;
+            if (_canonicalAgentKind(item) != kind) return item;
+            return {...item, 'desired_monitored': monitored};
+          })
+          .toList();
+      nextState['agents'] = nextAgents;
+      _state = nextState;
+    });
+    try {
+      final response = await _request(
+        'POST',
+        '/v1/agents/$kind/monitoring',
+        'agentMonitoring',
+        body: {'monitored': monitored},
+      );
+      if (response.statusCode >= 400) throw Exception(response.body);
+      await _refreshState();
+    } catch (_) {
+      if (previousState != null) setStateSafe(() => _state = previousState);
+      setStateSafe(() => _error = 'Could not update this agent.');
     }
   }
 
@@ -775,10 +872,9 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
         'Signed in';
     final organization =
         (_state?['organization'] as Map?)?['name']?.toString() ?? 'OpenLeash';
-    final visibleAgents = _agents
-        .whereType<Map>()
-        .where(_isVisibleAgent)
-        .toList();
+    final visibleAgents =
+        _agents.whereType<Map>().where(_isVisibleAgent).toList()
+          ..sort(_compareAgentsByCanonicalOrder);
     final sessionCount = visibleAgents.fold<int>(
       0,
       (count, agent) => count + _agentSessions(agent).length,
@@ -788,6 +884,10 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
         .whereType<Map>()
         .where(_isInterestingActivity)
         .toList();
+    final installedPlugins = _plugins.whereType<Map>().where(_pluginInstalled).toList()
+      ..sort(_comparePlugins);
+    final availablePlugins = _plugins.whereType<Map>().where((plugin) => !_pluginInstalled(plugin)).toList()
+      ..sort(_comparePlugins);
     final agentCount = visibleAgents.length;
     return [
       _Panel(
@@ -892,9 +992,39 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
         for (final item in visibleAgents)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _AgentCard(agent: item),
+            child: _AgentCard(
+              agent: item,
+              onMonitoringChanged: (monitored) =>
+                  _setAgentMonitoring(item, monitored),
+            ),
           ),
       ],
+      const SizedBox(height: 16),
+      _PluginHomeSection(
+        plugins: installedPlugins,
+        availableCount: availablePlugins.length,
+        outcomes: _outcomes.whereType<Map>().toList(),
+        onOpenPlugin: (plugin) => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => _PluginDetailPage(
+              plugin: plugin,
+              outcomes: _pluginOutcomes(plugin, _outcomes.whereType<Map>().toList()),
+              onInstallChanged: (installed) => _setPluginInstalled(plugin, installed),
+              onSaveSettings: (config) => _savePluginSettings(plugin, config),
+            ),
+          ),
+        ),
+        onAddPlugins: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => _PluginMarketplacePage(
+              plugins: availablePlugins,
+              outcomes: _outcomes.whereType<Map>().toList(),
+              onInstallChanged: _setPluginInstalled,
+              onSaveSettings: _savePluginSettings,
+            ),
+          ),
+        ),
+      ),
       const SizedBox(height: 16),
       const _SectionTitle('History'),
       const SizedBox(height: 8),
@@ -929,6 +1059,648 @@ class _OpenLeashHomeState extends State<OpenLeashHome> {
       ),
     ];
   }
+}
+
+class _PluginHomeSection extends StatelessWidget {
+  const _PluginHomeSection({
+    required this.plugins,
+    required this.availableCount,
+    required this.outcomes,
+    required this.onOpenPlugin,
+    required this.onAddPlugins,
+  });
+
+  final List<Map> plugins;
+  final int availableCount;
+  final List<Map> outcomes;
+  final ValueChanged<Map> onOpenPlugin;
+  final VoidCallback onAddPlugins;
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = ['cost', 'security', 'observability', 'utility'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(child: _SectionTitle('Plugins')),
+            OutlinedButton.icon(
+              onPressed: onAddPlugins,
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: Text('Add $availableCount'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _Panel(
+          child: plugins.isEmpty
+              ? const Text(
+                  'No installed plugins yet.',
+                  style: TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w700),
+                )
+              : Column(
+                  children: [
+                    for (final category in categories) ...[
+                      _PluginCategoryBlock(
+                        category: category,
+                        plugins: plugins.where((plugin) => _pluginCategory(plugin) == category).toList(),
+                        outcomes: outcomes,
+                        onOpenPlugin: onOpenPlugin,
+                      ),
+                    ],
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PluginCategoryBlock extends StatelessWidget {
+  const _PluginCategoryBlock({
+    required this.category,
+    required this.plugins,
+    required this.outcomes,
+    required this.onOpenPlugin,
+  });
+
+  final String category;
+  final List<Map> plugins;
+  final List<Map> outcomes;
+  final ValueChanged<Map> onOpenPlugin;
+
+  @override
+  Widget build(BuildContext context) {
+    if (plugins.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CategoryPill(category: category, count: plugins.length),
+          const SizedBox(height: 8),
+          ...plugins.map((plugin) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _PluginRow(
+                  plugin: plugin,
+                  outcomeCount: _pluginOutcomes(plugin, outcomes).length,
+                  onTap: () => onOpenPlugin(plugin),
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class _PluginRow extends StatelessWidget {
+  const _PluginRow({required this.plugin, required this.outcomeCount, required this.onTap});
+
+  final Map plugin;
+  final int outcomeCount;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _OlTheme.bg2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _OlTheme.line),
+        ),
+        child: Row(
+          children: [
+            _PluginIcon(plugin: plugin),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_pluginName(plugin), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
+                  const SizedBox(height: 3),
+                  Text('$outcomeCount outcomes', style: const TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: _OlTheme.mute),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PluginMarketplacePage extends StatefulWidget {
+  const _PluginMarketplacePage({
+    required this.plugins,
+    required this.outcomes,
+    required this.onInstallChanged,
+    required this.onSaveSettings,
+  });
+
+  final List<Map> plugins;
+  final List<Map> outcomes;
+  final Future<bool> Function(Map plugin, bool installed) onInstallChanged;
+  final Future<bool> Function(Map plugin, Map<String, dynamic> config) onSaveSettings;
+
+  @override
+  State<_PluginMarketplacePage> createState() => _PluginMarketplacePageState();
+}
+
+class _PluginMarketplacePageState extends State<_PluginMarketplacePage> {
+  String _query = '';
+  String _category = 'all';
+
+  @override
+  Widget build(BuildContext context) {
+    final plugins = widget.plugins.where((plugin) {
+      final matchesCategory = _category == 'all' || _pluginCategory(plugin) == _category;
+      final text = '${_pluginName(plugin)} ${_pluginDescription(plugin)} ${_pluginCategory(plugin)}'.toLowerCase();
+      return matchesCategory && text.contains(_query.toLowerCase());
+    }).toList();
+    return Scaffold(
+      backgroundColor: _OlTheme.bg,
+      appBar: AppBar(title: const Text('Add plugins'), backgroundColor: _OlTheme.bg, foregroundColor: _OlTheme.ink, elevation: 0),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: [
+            TextField(
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_rounded),
+                hintText: 'Search plugins',
+                filled: true,
+                fillColor: _OlTheme.surface,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: _OlTheme.line2)),
+              ),
+              onChanged: (value) => setState(() => _query = value),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: ['all', 'cost', 'security', 'observability', 'utility'].map((category) {
+                final selected = _category == category;
+                return ChoiceChip(
+                  label: Text(category == 'all' ? 'All' : _categoryLabel(category)),
+                  selected: selected,
+                  onSelected: (_) => setState(() => _category = category),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            if (plugins.isEmpty)
+              const _Panel(child: Text('No plugins match this search.', style: TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w700)))
+            else
+              ...plugins.map((plugin) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _MarketplacePluginCard(
+                      plugin: plugin,
+                      onInstall: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => _PluginDetailPage(
+                            plugin: plugin,
+                            outcomes: _pluginOutcomes(plugin, widget.outcomes),
+                            initialTab: 'settings',
+                            onInstallChanged: (installed) => widget.onInstallChanged(plugin, installed),
+                            onSaveSettings: (config) => widget.onSaveSettings(plugin, config),
+                          ),
+                        ),
+                      ),
+                    ),
+                  )),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MarketplacePluginCard extends StatelessWidget {
+  const _MarketplacePluginCard({required this.plugin, required this.onInstall});
+
+  final Map plugin;
+  final VoidCallback onInstall;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PluginIcon(plugin: plugin),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(_pluginName(plugin), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text(_pluginDescription(plugin), style: const TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 10),
+                _CategoryPill(category: _pluginCategory(plugin)),
+              ],
+            ),
+          ),
+          FilledButton(onPressed: onInstall, child: const Text('Install')),
+        ],
+      ),
+    );
+  }
+}
+
+class _PluginDetailPage extends StatefulWidget {
+  const _PluginDetailPage({
+    required this.plugin,
+    required this.outcomes,
+    required this.onInstallChanged,
+    required this.onSaveSettings,
+    this.initialTab = 'insights',
+  });
+
+  final Map plugin;
+  final List<Map> outcomes;
+  final String initialTab;
+  final Future<bool> Function(bool installed) onInstallChanged;
+  final Future<bool> Function(Map<String, dynamic> config) onSaveSettings;
+
+  @override
+  State<_PluginDetailPage> createState() => _PluginDetailPageState();
+}
+
+class _PluginDetailPageState extends State<_PluginDetailPage> {
+  late String _tab;
+  late Map<String, dynamic> _config;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = widget.initialTab;
+    _config = _pluginConfig(widget.plugin);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final installed = _pluginInstalled(widget.plugin);
+    final mandatory = _pluginMandatory(widget.plugin);
+    final settingsEditable = installed && !_pluginConfigLocked(widget.plugin);
+    return Scaffold(
+      backgroundColor: _OlTheme.bg,
+      appBar: AppBar(
+        title: Text(_pluginName(widget.plugin)),
+        backgroundColor: _OlTheme.bg,
+        foregroundColor: _OlTheme.ink,
+        elevation: 0,
+        actions: [
+          TextButton(
+            onPressed: _busy || mandatory ? null : () async {
+              final navigator = Navigator.of(context);
+              if (installed) {
+                final remove = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Remove plugin?'),
+                    content: Text('Remove ${_pluginName(widget.plugin)} from this account?'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Remove')),
+                    ],
+                  ),
+                );
+                if (remove != true) return;
+              }
+              setState(() => _busy = true);
+              final ok = await widget.onInstallChanged(!installed);
+              if (!mounted) return;
+              setState(() => _busy = false);
+              if (ok) navigator.pop();
+            },
+            child: Text(mandatory ? 'Required' : installed ? 'Remove' : 'Install'),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          children: [
+            _CategoryPill(category: _pluginCategory(widget.plugin)),
+            const SizedBox(height: 10),
+            Text(_pluginName(widget.plugin), style: const TextStyle(fontSize: 32, height: 1.02, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Text(_pluginDescription(widget.plugin), style: const TextStyle(color: _OlTheme.dim, fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            SegmentedButton<String>(
+              segments: [
+                const ButtonSegment(value: 'insights', label: Text('Insights')),
+                ButtonSegment(value: 'outcomes', label: Text('Outcomes ${widget.outcomes.length}')),
+                const ButtonSegment(value: 'settings', label: Text('Settings')),
+              ],
+              selected: {_tab},
+              onSelectionChanged: (values) => setState(() => _tab = values.first),
+            ),
+            const SizedBox(height: 16),
+            if (_tab == 'insights') _PluginInsightsPanel(outcomes: widget.outcomes),
+            if (_tab == 'outcomes') _PluginOutcomesPanel(outcomes: widget.outcomes),
+            if (_tab == 'settings') _PluginSettingsPanel(
+              plugin: widget.plugin,
+              config: _config,
+              enabled: settingsEditable,
+              busy: _busy,
+              onChanged: (key, value) => setState(() => _config[key] = value),
+              onSave: installed ? () async {
+                setState(() => _busy = true);
+                await widget.onSaveSettings(_config);
+                if (mounted) setState(() => _busy = false);
+              } : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PluginInsightsPanel extends StatelessWidget {
+  const _PluginInsightsPanel({required this.outcomes});
+
+  final List<Map> outcomes;
+
+  @override
+  Widget build(BuildContext context) {
+    final blocked = outcomes.where((item) => '${item['decision'] ?? item['status']}'.toLowerCase().contains('block')).length;
+    final review = outcomes.where((item) => '${item['status']}'.toLowerCase().contains('review')).length;
+    return _Panel(
+      child: Row(
+        children: [
+          Expanded(child: _DashboardMetric(value: '${outcomes.length}', label: 'outcomes')),
+          const SizedBox(width: 10),
+          Expanded(child: _DashboardMetric(value: '$blocked', label: 'blocked')),
+          const SizedBox(width: 10),
+          Expanded(child: _DashboardMetric(value: '$review', label: 'review')),
+        ],
+      ),
+    );
+  }
+}
+
+class _PluginOutcomesPanel extends StatelessWidget {
+  const _PluginOutcomesPanel({required this.outcomes});
+
+  final List<Map> outcomes;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      child: outcomes.isEmpty
+          ? const Text('No outcomes reported yet.', style: TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w700))
+          : Column(
+              children: [
+                for (var index = 0; index < outcomes.length; index++) ...[
+                  _HistoryRow(item: outcomes[index]),
+                  if (index != outcomes.length - 1) const Divider(height: 18),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+class _PluginSettingsPanel extends StatelessWidget {
+  const _PluginSettingsPanel({
+    required this.plugin,
+    required this.config,
+    required this.enabled,
+    required this.busy,
+    required this.onChanged,
+    required this.onSave,
+  });
+
+  final Map plugin;
+  final Map<String, dynamic> config;
+  final bool enabled;
+  final bool busy;
+  final void Function(String key, dynamic value) onChanged;
+  final VoidCallback? onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final keys = _pluginSettingKeys(plugin, config);
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (keys.isEmpty)
+            const Text('No setup required.', style: TextStyle(color: _OlTheme.dim, fontWeight: FontWeight.w700))
+          else
+            ...keys.map((key) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _PluginSettingControl(
+                    label: _settingLabel(key),
+                    value: config[key],
+                    enabled: enabled,
+                    onChanged: (value) => onChanged(key, value),
+                  ),
+                )),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: busy || !enabled ? null : onSave,
+            child: Text(busy ? 'Saving...' : 'Save settings'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PluginSettingControl extends StatelessWidget {
+  const _PluginSettingControl({required this.label, required this.value, required this.enabled, required this.onChanged});
+
+  final String label;
+  final dynamic value;
+  final bool enabled;
+  final ValueChanged<dynamic> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value is bool) {
+      return SwitchListTile.adaptive(
+        contentPadding: EdgeInsets.zero,
+        title: Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+        value: value == true,
+        onChanged: enabled ? onChanged : null,
+      );
+    }
+    return TextFormField(
+      initialValue: value?.toString() ?? '',
+      enabled: enabled,
+      decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+      onChanged: onChanged,
+    );
+  }
+}
+
+class _PluginIcon extends StatelessWidget {
+  const _PluginIcon({required this.plugin});
+
+  final Map plugin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(color: _OlTheme.accentSoft, borderRadius: BorderRadius.circular(12)),
+      child: Center(child: Text(_pluginInitials(plugin), style: const TextStyle(color: _OlTheme.accent, fontWeight: FontWeight.w900))),
+    );
+  }
+}
+
+class _CategoryPill extends StatelessWidget {
+  const _CategoryPill({required this.category, this.count});
+
+  final String category;
+  final int? count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text('${_categoryLabel(category)}${count == null ? '' : ' $count'}'),
+      avatar: Icon(_categoryIcon(category), size: 16),
+      backgroundColor: _categoryColor(category),
+      side: BorderSide.none,
+    );
+  }
+}
+
+bool _pluginInstalled(Map plugin) {
+  final policy = plugin['organizationPolicy'];
+  final settings = plugin['settings'];
+  return (policy is Map && policy['mandatory'] == true) ||
+      (settings is Map && settings['enabled'] == true) ||
+      plugin['installed'] == true;
+}
+
+bool _pluginMandatory(Map plugin) {
+  final policy = plugin['organizationPolicy'];
+  return policy is Map && policy['mandatory'] == true;
+}
+
+bool _pluginConfigLocked(Map plugin) {
+  final policy = plugin['organizationPolicy'];
+  return _pluginMandatory(plugin) || (policy is Map && policy['configLocked'] == true);
+}
+
+int _comparePlugins(Map left, Map right) {
+  return _pluginName(left).toLowerCase().compareTo(_pluginName(right).toLowerCase());
+}
+
+String _pluginName(Map plugin) {
+  final marketplace = plugin['marketplace'];
+  return plugin['slug']?.toString() ??
+      (marketplace is Map ? marketplace['slug']?.toString() : null) ??
+      plugin['packageId']?.toString() ??
+      plugin['name']?.toString() ??
+      plugin['displayName']?.toString() ??
+      plugin['id']?.toString().split('.').last ??
+      'plugin';
+}
+
+String _pluginDescription(Map plugin) {
+  final marketplace = plugin['marketplace'];
+  return (marketplace is Map ? marketplace['shortDescription']?.toString() : null) ??
+      plugin['description']?.toString() ??
+      'OpenLeash plugin';
+}
+
+String _pluginInitials(Map plugin) {
+  final parts = _pluginName(plugin).split(RegExp(r'[^a-zA-Z0-9]+')).where((part) => part.isNotEmpty).toList();
+  if (parts.length > 1) return parts.take(2).map((part) => part[0]).join().toUpperCase();
+  return _pluginName(plugin).padRight(2).substring(0, 2).toUpperCase();
+}
+
+String _pluginCategory(Map plugin) {
+  final marketplace = plugin['marketplace'];
+  final explicit = [
+    marketplace is Map ? marketplace['category'] : null,
+    plugin['category'],
+    plugin['manifest'] is Map ? (plugin['manifest'] as Map)['category'] : null,
+  ].whereType<Object>().map((item) => item.toString().toLowerCase()).join(' ');
+  final text = explicit.isNotEmpty
+      ? explicit
+      : '${plugin['id'] ?? ''} ${plugin['name'] ?? ''} ${plugin['description'] ?? ''}'.toLowerCase();
+  if (RegExp(r'security|policy|guard|skill|risk|approval|dlp|leak|secret|credential').hasMatch(text)) {
+    return 'security';
+  }
+  if (RegExp(r'observability|observe|log|mcp|siem|audit|telemetry|monitor').hasMatch(text)) {
+    return 'observability';
+  }
+  if (RegExp(r'cost|token|compression|usage|budget|spend').hasMatch(text)) {
+    return 'cost';
+  }
+  return 'utility';
+}
+
+String _categoryLabel(String category) {
+  if (category == 'cost') return 'Cost';
+  if (category == 'security') return 'Security';
+  if (category == 'observability') return 'Observability';
+  if (category == 'utility') return 'Utility';
+  return 'All';
+}
+
+IconData _categoryIcon(String category) {
+  if (category == 'security') return Icons.shield_outlined;
+  if (category == 'observability') return Icons.visibility_outlined;
+  if (category == 'utility') return Icons.bolt_outlined;
+  if (category == 'all') return Icons.apps_rounded;
+  return Icons.trending_down_rounded;
+}
+
+Color _categoryColor(String category) {
+  if (category == 'security') return const Color(0xffddefe8);
+  if (category == 'observability') return const Color(0xffdfeaf8);
+  if (category == 'utility') return const Color(0xfff4e9d5);
+  return _OlTheme.accentSoft;
+}
+
+List<Map> _pluginOutcomes(Map plugin, List<Map> outcomes) {
+  final id = plugin['id']?.toString();
+  return outcomes.where((outcome) {
+    final source = outcome['source'];
+    return source is Map && source['pluginId']?.toString() == id;
+  }).toList();
+}
+
+Map<String, dynamic> _pluginConfig(Map plugin) {
+  final settings = plugin['settings'];
+  final defaultConfig = plugin['defaultConfig'];
+  return {
+    if (defaultConfig is Map) ...defaultConfig.cast<String, dynamic>(),
+    if (settings is Map && settings['config'] is Map) ...(settings['config'] as Map).cast<String, dynamic>(),
+  };
+}
+
+List<String> _pluginSettingKeys(Map plugin, Map<String, dynamic> config) {
+  final keys = <String>{...config.keys};
+  final schema = plugin['configSchema'];
+  final properties = schema is Map ? schema['properties'] : null;
+  if (properties is Map) keys.addAll(properties.keys.map((key) => key.toString()));
+  keys.remove('enabled');
+  return keys.toList()..sort();
+}
+
+String _settingLabel(String value) {
+  final spaced = value
+      .replaceAll(RegExp(r'[_-]+'), ' ')
+      .replaceAllMapped(RegExp(r'([a-z0-9])([A-Z])'), (match) => '${match[1]} ${match[2]}')
+      .trim();
+  return spaced.split(' ').where((part) => part.isNotEmpty).map((part) => '${part[0].toUpperCase()}${part.substring(1)}').join(' ');
 }
 
 class ApprovalNotifications {
@@ -1628,9 +2400,10 @@ class _EmptyApprovals extends StatelessWidget {
 }
 
 class _AgentCard extends StatefulWidget {
-  const _AgentCard({required this.agent});
+  const _AgentCard({required this.agent, required this.onMonitoringChanged});
 
   final Map agent;
+  final ValueChanged<bool> onMonitoringChanged;
 
   @override
   State<_AgentCard> createState() => _AgentCardState();
@@ -1659,6 +2432,9 @@ class _AgentCardState extends State<_AgentCard> {
         primarySession?['event_count'] ?? primarySession?['eventCount'] ?? 0;
     final nodeCount = _agentNodeCount(agent);
     final tint = _agentTint(status);
+    final installed = agent['installed'] != false;
+    final monitored =
+        agent['desired_monitored'] == true || agent['desiredMonitored'] == true;
     return InkWell(
       borderRadius: BorderRadius.circular(20),
       onTap: primarySession == null
@@ -1742,6 +2518,12 @@ class _AgentCardState extends State<_AgentCard> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                Switch.adaptive(
+                  value: monitored,
+                  onChanged: installed ? widget.onMonitoringChanged : null,
+                  activeThumbColor: _OlTheme.ok,
                 ),
                 const SizedBox(width: 8),
                 _AgentStatusPill(status: status),
@@ -2540,35 +3322,94 @@ String _agentName(Map agent) {
 }
 
 String _agentKindLabel(Map agent) {
-  final raw =
-      agent['kind']?.toString() ??
-      agent['agent_kind']?.toString() ??
-      agent['agentKind']?.toString() ??
-      _agentName(agent);
-  final text = raw.toLowerCase();
-  if (text.contains('salesforce')) return 'Salesforce';
-  if (text.contains('codex')) return 'Codex';
-  if (text.contains('claude')) return 'Claude';
-  if (text.contains('cursor')) return 'Cursor';
-  if (text.contains('openclaw')) return 'OpenClaw';
-  if (text.contains('nanoclaw')) return 'NanoClaw';
+  final raw = _canonicalAgentKind(agent);
+  if (raw == 'claude-code') return 'Claude Code';
+  if (raw == 'github-copilot') return 'GitHub Copilot';
+  if (raw == 'gemini') return 'Google Gemini CLI';
+  if (raw == 'opencode') return 'OpenCode';
+  if (raw == 'codex') return 'OpenAI Codex';
+  if (raw == 'cline') return 'Cline';
+  if (raw == 'cursor') return 'Cursor';
+  if (raw == 'windsurf') return 'Windsurf';
+  if (raw == 'openclaw') return 'OpenClaw';
+  if (raw == 'nanoclaw') return 'NanoClaw';
+  if (raw == 'salesforce') return 'Salesforce';
   return raw.replaceAll('-', ' ');
 }
 
 String _agentIconAsset(Map agent) {
+  switch (_canonicalAgentKind(agent)) {
+    case 'claude-code':
+      return 'assets/agents/claude.png';
+    case 'github-copilot':
+      return 'assets/agents/githubcopilot.png';
+    case 'gemini':
+      return 'assets/agents/googlegemini.png';
+    case 'opencode':
+      return 'assets/agents/opencode.png';
+    case 'codex':
+      return 'assets/agents/codex.png';
+    case 'cline':
+      return 'assets/agents/cline.png';
+    case 'cursor':
+      return 'assets/agents/cursor.png';
+    case 'windsurf':
+      return 'assets/agents/windsurf.png';
+    case 'openclaw':
+    case 'nanoclaw':
+      return 'assets/agents/openclaw.png';
+    default:
+      return 'assets/agents/unknown.png';
+  }
+}
+
+String _canonicalAgentKind(Map agent) {
   final text =
       '${agent['kind'] ?? ''} ${agent['agent_kind'] ?? ''} ${agent['agentKind'] ?? ''} ${_agentName(agent)}'
           .toLowerCase();
   if (text.contains('claude') || text.contains('anthropic')) {
-    return 'assets/agents/claude.png';
+    return 'claude-code';
   }
-  if (text.contains('codex')) return 'assets/agents/codex.png';
-  if (text.contains('openai')) return 'assets/agents/openai.png';
-  if (text.contains('openclaw') || text.contains('nanoclaw')) {
-    return 'assets/agents/openclaw.png';
+  if (text.contains('github copilot') || text.contains('copilot')) {
+    return 'github-copilot';
   }
-  return 'assets/agents/unknown.png';
+  if (text.contains('gemini')) return 'gemini';
+  if (text.contains('opencode')) return 'opencode';
+  if (text.contains('codex') || text.contains('openai')) return 'codex';
+  if (text.contains('cline')) return 'cline';
+  if (text.contains('cursor')) return 'cursor';
+  if (text.contains('windsurf')) return 'windsurf';
+  if (text.contains('openclaw')) return 'openclaw';
+  if (text.contains('nanoclaw')) return 'nanoclaw';
+  if (text.contains('salesforce')) return 'salesforce';
+  return text.trim().replaceAll(RegExp(r'\s+'), '-');
 }
+
+int _compareAgentsByCanonicalOrder(Map left, Map right) {
+  final leftIndex = _canonicalAgentOrder.indexOf(_canonicalAgentKind(left));
+  final rightIndex = _canonicalAgentOrder.indexOf(_canonicalAgentKind(right));
+  final normalizedLeft = leftIndex < 0
+      ? _canonicalAgentOrder.length
+      : leftIndex;
+  final normalizedRight = rightIndex < 0
+      ? _canonicalAgentOrder.length
+      : rightIndex;
+  if (normalizedLeft != normalizedRight) {
+    return normalizedLeft - normalizedRight;
+  }
+  return _agentName(left).compareTo(_agentName(right));
+}
+
+const _canonicalAgentOrder = [
+  'claude-code',
+  'github-copilot',
+  'gemini',
+  'opencode',
+  'codex',
+  'cline',
+  'cursor',
+  'windsurf',
+];
 
 dynamic _agentActivityAt(Map agent) {
   return agent['activity_at'] ??
